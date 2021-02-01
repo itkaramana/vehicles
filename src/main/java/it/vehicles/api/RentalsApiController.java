@@ -1,6 +1,5 @@
 package it.vehicles.api;
 
-import java.util.HashMap;
 import java.util.List;
 
 import org.springframework.http.HttpStatus;

@@ -24,10 +24,17 @@ public class RentalsServiceImpl implements RentalsService {
 	@Autowired
 	private RentalsRepository repository;
 
+	private Integer offset;
+
 	@Retryable(value = SQLException.class, maxAttemptsExpression = "${retry.max.attempts}", backoff = @Backoff(delayExpression = "${retry.maxDelay}"))
 	@Override
 	public List<Rental> initListRentals(RentalsInput input) {
 		List<Rental> rentals = new ArrayList<Rental>();
+		if (input.getOffset() == null) {
+			offset = 0;
+		} else {
+			offset = input.getOffset();
+		}
 
 		if (input.getIds() != null) {
 			if (Strings.isNotBlank(input.getSort())) {
@@ -37,24 +44,53 @@ public class RentalsServiceImpl implements RentalsService {
 			}
 		}
 
-		if (input.getPriceMin() != null && input.getPriceMax() != null) {
-			log.info("query by priceMin and priceMax");
-			if (Strings.isNotBlank(input.getSort())) {
-				List<Rental> rentalsByPrice = repository.findByPricePerDayBetween(input.getPriceMin(),
-						input.getPriceMax(), Sort.by(Sort.Direction.ASC, input.getSort().trim()));
+		if (input.getPriceMin() != null && input.getPriceMax() == null) {
+			if (Strings.isNotBlank(input.getSort()) && input.getLimit() != null) {
 
-				rentals = rentalsByPrice;
+				rentals = repository.findByPriceGreaterAndPaginated(input.getPriceMin(), input.getLimit(), offset,
+						PageRequest.of(0, input.getLimit(), Sort.Direction.ASC, input.getSort()));
+
+			} else if (Strings.isNotBlank(input.getSort())) {
+				rentals = repository.findByPricePerDayGreaterThanEqual(input.getPriceMin(),
+						Sort.by(Sort.Direction.ASC, input.getSort()));
 			} else if (input.getLimit() != null) {
-				if (input.getOffset() == null) {
-					input.setOffset(0);
-				}
+				rentals = repository.findByPriceGreaterAndPaginated(input.getPriceMin(), input.getLimit(), offset,
+						null);
+			} else {
+				rentals = repository.findByPricePerDayGreaterThanEqual(input.getPriceMin(), null);
+			}
+		} else if (input.getPriceMin() == null && input.getPriceMax() != null) {
+			if (Strings.isNotBlank(input.getSort()) && input.getLimit() != null) {
+
+				rentals = repository.findByPriceGreaterAndPaginated(input.getPriceMax(), input.getLimit(), offset,
+						PageRequest.of(0, input.getLimit(), Sort.Direction.DESC, input.getSort()));
+
+			} else if (Strings.isNotBlank(input.getSort())) {
+				rentals = repository.findByPricePerDayGreaterThanEqual(input.getPriceMax(),
+						Sort.by(Sort.Direction.ASC, input.getSort()));
+			} else if (input.getLimit() != null) {
+				rentals = repository.findByPriceGreaterAndPaginated(input.getPriceMax(), input.getLimit(), offset,
+						null);
+			} else {
+				rentals = repository.findByPricePerDayGreaterThanEqual(input.getPriceMax(), null);
+			}
+		} else if (input.getPriceMin() != null && input.getPriceMax() != null) {
+			log.info("query by priceMin and priceMax");
+			// if (Strings.isNotBlank(input.getSort())) {
+			// List<Rental> rentalsByPrice =
+			// repository.findByPricePerDayBetween(input.getPriceMin(),
+			// input.getPriceMax(), Sort.by(Sort.Direction.ASC, input.getSort().trim()));
+			//
+			// rentals = rentalsByPrice;
+			// } else
+			if (input.getLimit() != null) {
 				if (Strings.isBlank(input.getSort())) {
 					rentals = repository.findBetweenPricePaginated(input.getPriceMin(), input.getPriceMax(),
-							input.getLimit(), input.getOffset(), null);
+							input.getLimit(), offset, null);
 				} else {
 					rentals = repository.findBetweenPricePaginated(input.getPriceMin(), input.getPriceMax(),
-							input.getLimit(), input.getOffset(),
-							PageRequest.of(0, input.getLimit(), Sort.by(Sort.Direction.ASC, input.getSort())));
+							input.getLimit(), offset,
+							PageRequest.of(0, input.getLimit(), Sort.Direction.ASC, input.getSort()));
 				}
 			} else {
 				List<Rental> rentalsByPrice = repository.findByPricePerDayBetween(input.getPriceMin(),
@@ -71,20 +107,17 @@ public class RentalsServiceImpl implements RentalsService {
 					input.setOffset(0);
 				}
 				rentals = repository.findByLtaAndLngPaginated(input.getNear()[0], input.getNear()[1], input.getLimit(),
-						input.getOffset(),
-						PageRequest.of(0, input.getLimit(), Sort.by(Sort.Direction.ASC, input.getSort())));
-				// } else if (Strings.isNotBlank(input.getSort())) {
-				//
-				// rentals = repository.findByLtaAndLng(input.getNear()[0], input.getNear()[1],
-				// PageRequest.of(0, 1000, Sort.by(Sort.Direction.ASC, input.getSort())));
-				// } else {
-				// rentals = repository.findByLtaAndLng(input.getNear()[0], input.getNear()[1],
-				// null);
-				// }
+						offset, PageRequest.of(0, input.getLimit(), Sort.by(Sort.Direction.ASC, input.getSort())));
+			} else if (Strings.isNotBlank(input.getSort())) {
 
-				// if (Strings.isNotBlank(input.getSort())) {
-				//
-				// }
+				rentals = repository.findByLtaAndLng(input.getNear()[0], input.getNear()[1],
+						PageRequest.of(0, 1000, Sort.Direction.ASC, input.getSort()));
+			} else {
+				rentals = repository.findByLtaAndLng(input.getNear()[0], input.getNear()[1], null);
+			}
+
+			if (Strings.isNotBlank(input.getSort())) {
+
 			}
 		}
 
@@ -93,28 +126,22 @@ public class RentalsServiceImpl implements RentalsService {
 		// if (input.getOffset() == null) {
 		// input.setOffset(0);
 		// }
-		// rentals = repository.findByLimitAndOffsetSorted(input.getSort(),
-		// input.getLimit(), input.getOffset());
+		// rentals = repository.findByLimitAndOffset(input.getLimit(), offset,
+		// PageRequest.of(0, input.getLimit(), Sort.Direction.ASC, input.getSort()));
 		// } else {
 		// rentals = repository.findAll(Sort.by(Sort.Direction.ASC,
 		// input.getSort().trim()));
 		// }
 		// }
 
-		// if (input.getLimit() != null) {
+		// if (input.getLimit() != null && Strings.isBlank(input.getSort())) {
 		// if (input.getOffset() == null) {
 		// input.setOffset(0);
 		// }
-		//
-		// rentals = repository.findByLimitAndOffset(input.getLimit(),
-		// input.getOffset());
+		// rentals = repository.findByLimitAndOffset(input.getLimit(), offset);
 		// }
 		return rentals;
 
-	}
-
-	// TODO
-	private void checkInputParameters(RentalsInput input) {
 	}
 
 }
