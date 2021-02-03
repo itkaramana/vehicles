@@ -11,7 +11,6 @@ import org.springframework.data.domain.Sort;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
-import org.springframework.util.CollectionUtils;
 
 import io.sentry.spring.EnableSentry;
 import it.vehicles.entity.Rental;
@@ -35,6 +34,17 @@ public class RentalsServiceImpl implements RentalsService {
 	@Retryable(value = SQLException.class, maxAttemptsExpression = "${retry.max.attempts}", backoff = @Backoff(delayExpression = "${retry.maxDelay}"))
 	@Override
 	public List<Rental> initListRentals(RentalsInput input) {
+
+		// if none of the query parameters is not passed returning all of the records
+		if (input.getIds() == null && input.getLimit() == null && input.getNear() == null && input.getOffset() == null
+				&& input.getPriceMax() == null && input.getPriceMin() == null && input.getSort() == null) {
+			return repository.findAll();
+		}
+
+		if (input.getNear() != null && input.getNear().length != 2) {
+			throw new BadRequestException("near should be with 2 parameters separated by comma",
+					Constant.ERROR_400_BADREQUEST, Constant.BAD_REQUEST_MESSAGE);
+		}
 
 		OffsetPageable pageable = null;
 		// cashing the count of records
@@ -120,9 +130,6 @@ public class RentalsServiceImpl implements RentalsService {
 			rentals = repository.findAll(Sort.by(Sort.Direction.ASC, input.getSort()));
 		}
 
-		if (CollectionUtils.isEmpty(rentals)) {
-			return repository.findAll();
-		}
 		return rentals;
 
 	}

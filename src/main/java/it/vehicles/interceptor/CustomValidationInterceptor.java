@@ -1,5 +1,6 @@
 package it.vehicles.interceptor;
 
+import java.util.ArrayList;
 import java.util.Map;
 
 import javax.servlet.http.HttpServletRequest;
@@ -12,37 +13,25 @@ import it.vehicles.util.Constant;
 
 public class CustomValidationInterceptor extends HandlerInterceptorAdapter {
 
-	private enum PossibleQueryParams {
-		PRICEMIN("price[min]"), PRICEMAX("price[max]"), PAGELIMIT("page[limit]"), PAGEOFFSET("page[offset]"), IDS(
-				"ids"), SORT("sort"), NEAR("near");
+	private static ArrayList<String> parameters;
 
-		private String value;
-
-		public String getValue() {
-			return this.value;
-		}
-
-		private PossibleQueryParams(String value) {
-			this.value = value;
-		}
-
-		public static boolean containsValue(String requestValue) {
-			for (PossibleQueryParams priceValues : values()) {
-				if (priceValues.getValue().equals(requestValue)) {
-					return true;
-				}
-			}
-			return false;
-		}
+	static {
+		parameters.add("price[min]");
+		parameters.add("price[max]");
+		parameters.add("page[limit]");
+		parameters.add("page[offset]");
+		parameters.add("ids");
+		parameters.add("sort");
+		parameters.add("near");
 	}
 
 	@Override
 	public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
 		if (request.getMethod().equals("GET")) {
-			Map<String, String[]> parameters = request.getParameterMap();
-			if (parameters.size() > 0) {
-				for (String parameterName : parameters.keySet()) {
-					if (!PossibleQueryParams.containsValue(parameterName)) {
+			Map<String, String[]> parametersInRequest = request.getParameterMap();
+			if (parametersInRequest.size() > 0) {
+				for (String parameterName : parametersInRequest.keySet()) {
+					if (!parameters.contains(parameterName)) {
 						throw new BadRequestException(
 								Constant.ERROR_UNRECOGNIZED_PARAMETER.replace(Constant.PARAMETER_NAME, parameterName),
 								Constant.ERROR_400_BADREQUEST);
