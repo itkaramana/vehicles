@@ -45,7 +45,8 @@ public class RentalsApiController implements RentalsApi {
 			@RequestParam(value = "sort", required = false) String sort,
 			@RequestParam(value = "page[offset]", required = false) Integer offset,
 			@RequestParam(value = "page[limit]", required = false) Integer limit) {
-		RentalsInput input = RentalsInput.builder().ids(ids).priceMin(priceMin).priceMax(priceMax).near(near).sort(sort).offset(offset).limit(limit).build();
+		RentalsInput input = RentalsInput.builder().ids(ids).priceMin(priceMin).priceMax(priceMax).near(near).sort(sort)
+				.offset(offset).limit(limit).build();
 		return new ResponseEntity<>(listVehiclesService.initListRentals(input), HttpStatus.OK);
 	}
 

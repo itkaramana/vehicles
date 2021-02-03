@@ -6,19 +6,23 @@ import java.util.List;
 
 import org.apache.logging.log4j.util.Strings;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
+import io.sentry.spring.EnableSentry;
 import it.vehicles.entity.Rental;
+import it.vehicles.exceptions.BadRequestException;
 import it.vehicles.input.RentalsInput;
 import it.vehicles.repository.RentalsRepository;
-import lombok.extern.slf4j.Slf4j;
+import it.vehicles.util.Constant;
+import it.vehicles.util.OffsetPageable;
 
 @Service
-@Slf4j
+@EnableSentry
 public class RentalsServiceImpl implements RentalsService {
 
 	@Autowired
@@ -26,120 +30,99 @@ public class RentalsServiceImpl implements RentalsService {
 
 	private Integer offset;
 
+	private int defaultLimit;
+
 	@Retryable(value = SQLException.class, maxAttemptsExpression = "${retry.max.attempts}", backoff = @Backoff(delayExpression = "${retry.maxDelay}"))
 	@Override
 	public List<Rental> initListRentals(RentalsInput input) {
+
+		OffsetPageable pageable = null;
+		// cashing the count of records
+		this.defaultLimit = (int) repository.count();
+
 		List<Rental> rentals = new ArrayList<Rental>();
+
+		// to secure the offset if limit is passed
 		if (input.getOffset() == null) {
 			offset = 0;
 		} else {
 			offset = input.getOffset();
 		}
 
+		// if the limit is passed, there is only logic to be > 0
+		if (input.getLimit() != null && input.getLimit() < 1) {
+			throw new BadRequestException("limit should be bigger than 0", Constant.ERROR_400_BADREQUEST,
+					Constant.BAD_REQUEST_MESSAGE);
+		}
+
+		// if the ids parameter is passed, only sorting should be enabled, ignoring the
+		// other parameters, because there is no logic to filter when we search by index
+		// in this case the user knows what to expect
 		if (input.getIds() != null) {
 			if (Strings.isNotBlank(input.getSort())) {
-				rentals = repository.findByIdIn(input.getIds(), Sort.by(Sort.Direction.ASC, input.getSort()));
+				return rentals = repository.findByIdIn(input.getIds(), Sort.by(Sort.Direction.ASC, input.getSort()));
 			} else {
-				rentals = repository.findByIdIn(input.getIds(), null);
+				return rentals = repository.findByIdIn(input.getIds(), null);
 			}
 		}
 
+		// declaring pagination and sorting by the input or set to default
+		if (Strings.isNotBlank(input.getSort()) && input.getLimit() != null) {
+			pageable = new OffsetPageable(input.getLimit(), offset, input.getSort());
+		} else if (Strings.isNotBlank(input.getSort())) {
+			// default limit = count of the records
+			pageable = new OffsetPageable(defaultLimit, offset, input.getSort());
+		} else if (input.getLimit() != null) {
+			// default sorting by id
+			pageable = new OffsetPageable(input.getLimit(), offset, "id");
+		} else {
+			// default values for sorting and pagination
+			pageable = new OffsetPageable(defaultLimit, offset, "id");
+		}
+
+		// filter by price, with pagination and sort if they are passed
 		if (input.getPriceMin() != null && input.getPriceMax() == null) {
-			if (Strings.isNotBlank(input.getSort()) && input.getLimit() != null) {
-
-				rentals = repository.findByPriceGreaterAndPaginated(input.getPriceMin(), input.getLimit(), offset,
-						PageRequest.of(0, input.getLimit(), Sort.Direction.ASC, input.getSort()));
-
-			} else if (Strings.isNotBlank(input.getSort())) {
-				rentals = repository.findByPricePerDayGreaterThanEqual(input.getPriceMin(),
-						Sort.by(Sort.Direction.ASC, input.getSort()));
-			} else if (input.getLimit() != null) {
-				rentals = repository.findByPriceGreaterAndPaginated(input.getPriceMin(), input.getLimit(), offset,
-						null);
-			} else {
-				rentals = repository.findByPricePerDayGreaterThanEqual(input.getPriceMin(), null);
-			}
+			rentals = repository.findByPriceBigger(input.getPriceMin(), pageable);
 		} else if (input.getPriceMin() == null && input.getPriceMax() != null) {
-			if (Strings.isNotBlank(input.getSort()) && input.getLimit() != null) {
-
-				rentals = repository.findByPriceGreaterAndPaginated(input.getPriceMax(), input.getLimit(), offset,
-						PageRequest.of(0, input.getLimit(), Sort.Direction.DESC, input.getSort()));
-
-			} else if (Strings.isNotBlank(input.getSort())) {
-				rentals = repository.findByPricePerDayGreaterThanEqual(input.getPriceMax(),
-						Sort.by(Sort.Direction.ASC, input.getSort()));
-			} else if (input.getLimit() != null) {
-				rentals = repository.findByPriceGreaterAndPaginated(input.getPriceMax(), input.getLimit(), offset,
-						null);
-			} else {
-				rentals = repository.findByPricePerDayGreaterThanEqual(input.getPriceMax(), null);
-			}
+			rentals = repository.findByPriceLesser(input.getPriceMax(), pageable);
 		} else if (input.getPriceMin() != null && input.getPriceMax() != null) {
-			log.info("query by priceMin and priceMax");
-			// if (Strings.isNotBlank(input.getSort())) {
-			// List<Rental> rentalsByPrice =
-			// repository.findByPricePerDayBetween(input.getPriceMin(),
-			// input.getPriceMax(), Sort.by(Sort.Direction.ASC, input.getSort().trim()));
-			//
-			// rentals = rentalsByPrice;
-			// } else
-			if (input.getLimit() != null) {
-				if (Strings.isBlank(input.getSort())) {
-					rentals = repository.findBetweenPricePaginated(input.getPriceMin(), input.getPriceMax(),
-							input.getLimit(), offset, null);
-				} else {
-					rentals = repository.findBetweenPricePaginated(input.getPriceMin(), input.getPriceMax(),
-							input.getLimit(), offset,
-							PageRequest.of(0, input.getLimit(), Sort.Direction.ASC, input.getSort()));
-				}
-			} else {
-				List<Rental> rentalsByPrice = repository.findByPricePerDayBetween(input.getPriceMin(),
-						input.getPriceMax(), null);
-				rentals = rentalsByPrice;
-			}
-
-			log.info("Count of returned entities: " + rentals.size());
+			rentals = repository.findByPriceBetween(input.getPriceMin(), input.getPriceMax(), pageable);
 		}
 
+		// near with addition filter by price, possible sort and pagination if they are
+		// passed
 		if (input.getNear() != null) {
-			if (input.getLimit() != null) {
-				if (input.getOffset() == null) {
-					input.setOffset(0);
-				}
-				rentals = repository.findByLtaAndLngPaginated(input.getNear()[0], input.getNear()[1], input.getLimit(),
-						offset, PageRequest.of(0, input.getLimit(), Sort.by(Sort.Direction.ASC, input.getSort())));
-			} else if (Strings.isNotBlank(input.getSort())) {
-
-				rentals = repository.findByLtaAndLng(input.getNear()[0], input.getNear()[1],
-						PageRequest.of(0, 1000, Sort.Direction.ASC, input.getSort()));
+			if (input.getPriceMax() != null && input.getPriceMin() != null) {
+				rentals = repository.findByNearAndPriceBetween(input.getNear()[0], input.getNear()[1],
+						input.getPriceMin(), input.getPriceMax(), pageable);
+			} else if (input.getPriceMin() != null) {
+				rentals = repository.findByNearAndPriceBigger(input.getNear()[0], input.getNear()[1],
+						input.getPriceMin(), pageable);
+			} else if (input.getPriceMax() != null) {
+				rentals = repository.findByNearAndPriceLesser(input.getNear()[0], input.getNear()[1],
+						input.getPriceMax(), pageable);
 			} else {
-				rentals = repository.findByLtaAndLng(input.getNear()[0], input.getNear()[1], null);
+				rentals = repository.findByLtaAndLng(input.getNear()[0], input.getNear()[1], pageable);
 			}
 
-			if (Strings.isNotBlank(input.getSort())) {
-
-			}
 		}
 
-		// if (Strings.isNotBlank(input.getSort())) {
-		// if (input.getLimit() != null) {
-		// if (input.getOffset() == null) {
-		// input.setOffset(0);
-		// }
-		// rentals = repository.findByLimitAndOffset(input.getLimit(), offset,
-		// PageRequest.of(0, input.getLimit(), Sort.Direction.ASC, input.getSort()));
-		// } else {
-		// rentals = repository.findAll(Sort.by(Sort.Direction.ASC,
-		// input.getSort().trim()));
-		// }
-		// }
+		// it would catch if sort is passed
+		if (input.getLimit() != null && input.getNear() == null && input.getPriceMax() == null
+				&& input.getPriceMin() == null && input.getOffset() == null) {
+			Page<Rental> page = repository.findAll(pageable);
+			rentals = page.getContent();
+		}
 
-		// if (input.getLimit() != null && Strings.isBlank(input.getSort())) {
-		// if (input.getOffset() == null) {
-		// input.setOffset(0);
-		// }
-		// rentals = repository.findByLimitAndOffset(input.getLimit(), offset);
-		// }
+		// only sort is passed, other cases are covered in the previues conditions
+		if (Strings.isNotBlank(input.getSort()) && input.getPriceMax() == null && input.getPriceMin() == null
+				&& input.getLimit() == null && input.getOffset() == null && input.getNear() == null) {
+			rentals = repository.findAll(Sort.by(Sort.Direction.ASC, input.getSort()));
+		}
+
+		if (CollectionUtils.isEmpty(rentals)) {
+			return repository.findAll();
+		}
 		return rentals;
 
 	}
