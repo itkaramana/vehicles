@@ -5,13 +5,12 @@ import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import io.sentry.spring.EnableSentry;
 import it.vehicles.entity.Rental;
 import it.vehicles.exceptions.NotFoundException;
 import it.vehicles.repository.RentalsRepository;
+import it.vehicles.util.Constant;
 
 @Service
-@EnableSentry
 public class RentalServiceImpl implements RentalService {
 
 	@Autowired
@@ -25,7 +24,7 @@ public class RentalServiceImpl implements RentalService {
 		Optional<Rental> vehicle = repository.findById(idToDb);
 
 		if (!vehicle.isPresent()) {
-			throw new NotFoundException("mememe", 603, "sdsadsa");
+			throw new NotFoundException("Vehichle with id: " + id + " not found.", Constant.ERROR_404_NOTFOUND);
 		}
 
 		return vehicle.get();

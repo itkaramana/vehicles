@@ -16,6 +16,7 @@ public class CustomValidationInterceptor extends HandlerInterceptorAdapter {
 	private static ArrayList<String> parameters;
 
 	static {
+		parameters = new ArrayList<>();
 		parameters.add("price[min]");
 		parameters.add("price[max]");
 		parameters.add("page[limit]");

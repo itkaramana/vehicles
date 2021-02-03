@@ -12,7 +12,6 @@ import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 
-import io.sentry.spring.EnableSentry;
 import it.vehicles.entity.Rental;
 import it.vehicles.exceptions.BadRequestException;
 import it.vehicles.input.RentalsInput;
@@ -21,7 +20,6 @@ import it.vehicles.util.Constant;
 import it.vehicles.util.OffsetPageable;
 
 @Service
-@EnableSentry
 public class RentalsServiceImpl implements RentalsService {
 
 	@Autowired
