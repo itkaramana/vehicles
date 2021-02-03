@@ -15,7 +15,7 @@ public class VehiclesApplication extends SpringBootServletInitializer {
 
 	public static void main(String[] args) {
 		SpringApplication.run(VehiclesApplication.class, args);
-		System.getenv().forEach((k, v) -> System.out.println(k + ":" + v));
+//		System.getenv().forEach((k, v) -> System.out.println(k + ":" + v));
 	}
 
 }
